@@ -32,15 +32,21 @@ interface BuildSettings {
     toolchain: string,
     config: ToolchainSettings,
 
-    // ingoring rest for now...
+    // ignoring rest for now...
+};
+
+interface Environment {
+    name: string,
+
+    cxx_toolchain: string,// eslint-disable-line
+    cxx_settings: ToolchainSettings,// eslint-disable-line
 };
 
 export interface Settings {
     source_path: string, // eslint-disable-line
     build_path: string, // eslint-disable-line
     current_context: string, // eslint-disable-line
-
-    settings: { [context: string]: BuildSettings },
+    contexts: { [context: string]: string /* environment */ },
 };
 
 export interface OptionDescription {
@@ -143,10 +149,11 @@ function makeEnumPicker<E extends object>(label: string, value: any, enumObj: E)
 export class DanConfig {
     private settings: Settings | undefined;
     private options: { [context: string]: OptionDescription[] | undefined } = {};
-    private contextChangeEvent = new vscode.EventEmitter<Context | undefined>();
+    private contextChangeEvent = new vscode.EventEmitter<string | undefined>();
     private toolchainsConfig?: ToolchainsConfig;
     private watcher: vscode.FileSystemWatcher;
     private buildFiles: vscode.Uri[] = [];
+    private reconfigureTimer : ReturnType<typeof setTimeout> | undefined = undefined;
     public configChanged = new vscode.EventEmitter<DanConfig>();
     public targets: Target[] = [];
     public targetsChanged = new vscode.EventEmitter<Target[]>();
@@ -173,7 +180,18 @@ export class DanConfig {
     private buildFileChanged(f: vscode.Uri) {
         if (this.buildFiles.find(b => b.path === f.path)) {
             console.debug(`${f.path} changed re-configuring`);
-            this.doConfigure();
+
+            this.cancelAutoReconfigure();
+            this.reconfigureTimer = setTimeout(() => {
+                this.doConfigure();
+            }, 3000);
+        }
+    }
+
+    private cancelAutoReconfigure() {
+        if (this.reconfigureTimer) {
+            clearTimeout(this.reconfigureTimer);
+            this.reconfigureTimer = undefined;
         }
     }
 
@@ -186,7 +204,7 @@ export class DanConfig {
 
                 {
                     let promises = [];
-                    for (const context in this.settings.settings) {
+                    for (const context in this.settings.contexts) {
                         promises.push((async () => {
                             this.options[context] = await commands.codeCommand<OptionDescription[]>(this.ext, 'get-options', context);
                         })());
@@ -232,7 +250,7 @@ export class DanConfig {
                     console.error(err);
                 }
             } else {
-                vscode.window.showErrorMessage('No toolchan found, please run "dan scan-toolchains" and reload vscode');
+                vscode.window.showErrorMessage('No toolchain found, please run "dan scan-toolchains" and reload vscode');
             }
         }
     }
@@ -252,6 +270,8 @@ export class DanConfig {
     }
 
     async doConfigure(context?: string) {
+        this.cancelAutoReconfigure();
+
         if (!context) {
             if (!this.settings) {
                 throw Error();
@@ -259,27 +279,16 @@ export class DanConfig {
             context = this.settings.current_context;
         }
         let args = this.baseConfigArgs;
-        if (context) {
-            const buildSettings = this.settings?.settings[context] ?? this.defaultBuildSettings();
-            const buildOptions = this.options[context] ?? [];
-            args.push(...getLogArgs(), ...DanConfig.getSettingsArgs(buildSettings), ...DanConfig.getOptionsArgs(buildOptions));
-            args.push('--toolchain', buildSettings.toolchain,
-                context);
-        }
+        // if (context) {
+        //     const buildSettings = this.settings?.contexts[context] ?? this.defaultBuildSettings();
+        //     const buildOptions = this.options[context] ?? [];
+        //     args.push(...getLogArgs(), ...DanConfig.getSettingsArgs(buildSettings), ...DanConfig.getOptionsArgs(buildOptions));
+        //     args.push('--toolchain', buildSettings.toolchain,
+        //         context);
+        // }
 
-        await channelExec('configure', args, undefined, true, this.ext.projectRoot);
+        await channelExec('configure', [...args, context], undefined, true, this.ext.projectRoot);
         await this.reload();
-    }
-
-    defaultBuildSettings(): BuildSettings {
-        return {
-            toolchain: 'undefined',
-            config: {
-                build_type: BuildType.debug, // eslint-disable-line
-                compile_flags: new Array(), // eslint-disable-line
-                default_library_type: DefaultLibraryType.static, // eslint-disable-line
-            } as ToolchainSettings,
-        } as BuildSettings;
     }
 
     buildSettings(context: string) {
@@ -287,17 +296,19 @@ export class DanConfig {
             this.settings = {
                 source_path: 'undefined', // eslint-disable-line
                 build_path: 'undefined', // eslint-disable-line
-                settings: {},
+                current_context: 'undefined',// eslint-disable-line
+                contexts: {},
             } as Settings;
         }
 
-        if (!(context in this.settings.settings)) {
-            this.settings.settings[context] = this.defaultBuildSettings();
+        if (!(context in this.settings.contexts)) {
+            this.settings.contexts[context] = "default";
         }
-        return this.settings.settings[context];
+        return this.settings.contexts[context];
     }
 
     async configureContext(context: string) {
+        this.cancelAutoReconfigure();
 
         const buildSettings = this.buildSettings(context);
 
@@ -312,45 +323,45 @@ export class DanConfig {
             return new Pick();
         };
 
-        if (buildSettings.toolchain === 'undefined') {
-            const toolchains = await commands.getToolchains(this.ext);
-            const toolchain = await vscode.window.showQuickPick(toolchains, {
-                title: 'Select toolchain',
-            });
-            if (!toolchain) {
-                return;
-            }
-            buildSettings.toolchain = toolchain;
-        }
+        // if (buildSettings.toolchain === 'undefined') {
+        //     const toolchains = await commands.getToolchains(this.ext);
+        //     const toolchain = await vscode.window.showQuickPick(toolchains, {
+        //         title: 'Select toolchain',
+        //     });
+        //     if (!toolchain) {
+        //         return;
+        //     }
+        //     buildSettings.toolchain = toolchain;
+        // }
 
 
         while (true) {
 
             let pickItems = [
-                makePicker('toolchain', buildSettings.toolchain, async () => {
-                    const toolchains = await commands.getToolchains(this.ext);
-                    buildSettings.toolchain = await vscode.window.showQuickPick(toolchains, { title: 'Select toolchain' }) ?? buildSettings.toolchain;
-                }),
-                makePicker('config', undefined, async () => {
-                    while (true) {
-                        let cxxPickItems = [
-                            makeEnumPicker('build type', buildSettings.config.build_type, BuildType),
-                            makeListPicker('compile flags', buildSettings.config.compile_flags),
-                            makeListPicker('link flags', buildSettings.config.link_flags),
-                            makeEnumPicker('default library type', buildSettings.config.default_library_type, DefaultLibraryType),
-                        ];
-                        const item = await vscode.window.showQuickPick(cxxPickItems, {
-                            title: `${context} cxx configuration`,
-                            placeHolder: 'Press escape to stop',
-                            ignoreFocusOut: true
-                        } as vscode.QuickPickOptions);
-                        if (!item) {
-                            return;
-                        }
-                        await item.action();
-                    };
+                // makePicker('toolchain', buildSettings.toolchain, async () => {
+                //     const toolchains = await commands.getToolchains(this.ext);
+                //     buildSettings.toolchain = await vscode.window.showQuickPick(toolchains, { title: 'Select toolchain' }) ?? buildSettings.toolchain;
+                // }),
+                // makePicker('config', undefined, async () => {
+                //     while (true) {
+                //         let cxxPickItems = [
+                //             makeEnumPicker('build type', buildSettings.config.build_type, BuildType),
+                //             makeListPicker('compile flags', buildSettings.config.compile_flags),
+                //             makeListPicker('link flags', buildSettings.config.link_flags),
+                //             makeEnumPicker('default library type', buildSettings.config.default_library_type, DefaultLibraryType),
+                //         ];
+                //         const item = await vscode.window.showQuickPick(cxxPickItems, {
+                //             title: `${context} cxx configuration`,
+                //             placeHolder: 'Press escape to stop',
+                //             ignoreFocusOut: true
+                //         } as vscode.QuickPickOptions);
+                //         if (!item) {
+                //             return;
+                //         }
+                //         await item.action();
+                //     };
 
-                }),
+                // }),
                 makePicker('options', undefined, async () => {
 
                     if (!this.options[context]) {
@@ -409,6 +420,7 @@ export class DanConfig {
         }
         this.settings.current_context = name;
         await channelExec('set', ['context', name], undefined, true, this.ext.projectRoot);
+        this._currentEnvironment = await commands.codeCommand<Environment>(this.ext, 'get-environment', name);
 
         if (reload) {
             await this.reload(false);
@@ -416,48 +428,41 @@ export class DanConfig {
         this.contextChangeEvent.fire(this.currentContext);
     }
 
-    private _currentContext?: Context;
-    public get currentContext(): Context | undefined {
+    public get currentContext(): string {
         if (!this.settings) {
-            return undefined;
+            return "default";
         }
-        const name = this.settings.current_context;
-        if (!this._currentContext || this._currentContext.name !== name) {
-            this._currentContext = {
-                name: name,
-                settings: this.settings.settings[name],
-                options: this.options[name] ?? [],
-            };
-        }
-        return this._currentContext;
+        return this.settings.current_context;
     }
 
     public get contextNames() {
-        if (this.settings && this.settings.settings) {
-            return Object.keys(this.settings.settings);
+        if (this.settings && this.settings.contexts) {
+            return Object.keys(this.settings.contexts);
         } else {
             return [];
         }
     }
 
+    private _currentEnvironment?: Environment = undefined;
+    public get currentEnvironment() : Environment|undefined {
+        return this._currentEnvironment;
+    }
+
     public get currentToolchainConfig() {
-        if (this.toolchainsConfig) {
-            const ctx = this.currentContext;
-            if (ctx) {
-                return this.toolchainsConfig?.toolchains[ctx.settings.toolchain];
-            }
-        }
+        return this.toolchainsConfig?.toolchains[this.currentEnvironment?.cxx_toolchain ?? "default"];
     }
 
     public get configured() {
         return !!this.settings;
     }
 
-    onContextChanged(callback: (c: Context | undefined) => void) {
+    onContextChanged(callback: (c: string | undefined) => void) {
         this.contextChangeEvent.event(callback);
     }
 
     async newConfiguration() {
+        this.cancelAutoReconfigure();
+        
         let value = undefined;
         if (fs.existsSync(this.userConfigPath)) {
             vscode.window.showInformationMessage('Use user auto-configuration');
@@ -479,6 +484,7 @@ export class DanConfig {
     }
 
     async uiConfiguration() {
+        this.cancelAutoReconfigure();
 
         class ContextPickItem {
             constructor(public label: string) { }

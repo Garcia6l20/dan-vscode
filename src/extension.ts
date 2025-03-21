@@ -75,7 +75,7 @@ export class Dan implements vscode.Disposable {
 
 	getTargetId(target?: Target) {
 		if (target && this.currentContext) {
-			return target.fullname.replace(`${this.currentContext.name}.`, '');
+			return target.fullname.replace(`${this.currentContext}.`, '');
 		}
 	}
 
@@ -129,7 +129,7 @@ export class Dan implements vscode.Disposable {
 	}
 
 	get buildPath(): string {
-		const p = this.projectRoot + '/' + this.getConfig<string>('buildFolder') ?? 'build';
+		const p = this.projectRoot + '/' + this.getConfig<string>('buildFolder');
 		return p//
 			.replace('${workspaceFolder}', this.workspaceFolder.uri.fsPath);
 	}
@@ -268,9 +268,6 @@ export class Dan implements vscode.Disposable {
 		this.notifyUpdated();
 
 		this.extensionContext.environmentVariableCollection.replace('DAN_BUILD_PATH', this.buildPath);
-		if (this.currentContext) {
-			this.extensionContext.environmentVariableCollection.replace('DAN_TOOLCHAIN', this.currentContext.settings.toolchain);
-		}
 	}
 
 	async selectCurrentContext() {
@@ -422,7 +419,7 @@ export class Dan implements vscode.Disposable {
 			this.extensionContext.subscriptions.push(
 				new TestAdapterRegistrar(
 					testHub,
-					(workspaceFolder) => new DanTestAdapter(this, log),
+					(workspaceFolder) => new DanTestAdapter(this, workspaceFolder, log),
 					log
 				)
 			);

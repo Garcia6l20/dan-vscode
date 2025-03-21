@@ -244,10 +244,10 @@ class SelectContextButton extends Button {
     constructor(ext: Dan, protected readonly priority: number) {
         super(priority);
         this.command = 'dan.selectCurrentContext';
-        this.text = ext.configuration.currentContext?.name ?? 'none';
+        this.text = ext.configuration.currentContext;
         this.tooltip = 'Select build context';
-        ext.configuration.onContextChanged((context?: Context) => {
-            this.text = context?.name ?? 'none';
+        ext.configuration.onContextChanged((context?: string) => {
+            this.text = context ?? 'undefined';
             this.update();
         });
     }

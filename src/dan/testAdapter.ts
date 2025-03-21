@@ -53,9 +53,13 @@ export class DanTestAdapter implements TestAdapter {
     private readonly testStatesEmitter = new vscode.EventEmitter<
         TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent
     >();
+    private readonly retireEmitter = new vscode.EventEmitter<
+        RetireEvent
+    >();
 
     constructor(
         private readonly ext: Dan,
+        public readonly workspaceFolder: vscode.WorkspaceFolder,
         private readonly log: Log
     ) {
         this.log.info('Initializing dan test adapter');
@@ -64,6 +68,11 @@ export class DanTestAdapter implements TestAdapter {
             this.testsEmitter,
             this.testStatesEmitter
         );
+        this.ext.configuration.onContextChanged(async (c: string | undefined) => {
+            if (c) {
+                this.load();
+            }
+        });
     }
     dispose() {
         for (const disposable of this.disposables) {
@@ -72,24 +81,30 @@ export class DanTestAdapter implements TestAdapter {
         this.disposables = [];
     }
 
-    get workspaceFolder() {
-        return this.ext.workspaceFolder;
-    }
     async load(): Promise<void> {
-        this.log.info('Loading dan tests');
-        this.testsEmitter.fire(<TestLoadStartedEvent>{ type: 'started' });
+        if (!fileExists(path.join(this.workspaceFolder.uri.fsPath, ".dan"))) {
+            this.retireEmitter.fire({});
+        } else {
+            console.info('Loading dan tests');
 
-        try {
-            this.root = await commands.getTestSuites(this.ext);
-            this.testsEmitter.fire(<TestLoadFinishedEvent>{
-                type: 'finished',
-                suite: this.root,
+            this.testsEmitter.fire(<TestLoadStartedEvent>{
+                type: 'started',
             });
-        } catch (e: any) {
-            this.testsEmitter.fire(<TestLoadFinishedEvent>{
-                type: 'finished',
-                errorMessage: e.toString(),
-            });
+
+            try {
+
+                this.root = await commands.getTestSuites(this.ext);
+                // console.info(`test suite: ${JSON.stringify(this.root)}`);
+                this.testsEmitter.fire(<TestLoadFinishedEvent>{
+                    type: 'finished',
+                    suite: this.root,
+                });
+            } catch (e: any) {
+                this.testsEmitter.fire(<TestLoadFinishedEvent>{
+                    type: 'finished',
+                    errorMessage: e.toString(),
+                });
+            }
         }
     }
 
@@ -236,7 +251,7 @@ export class DanTestAdapter implements TestAdapter {
         try {
             await Promise.all(promises);
             this.testStatesEmitter.fire(<TestRunFinishedEvent>{ type: 'finished' });
-        } catch(err) {            
+        } catch (err) {
             this.testStatesEmitter.fire(<TestRunFinishedEvent>{ type: 'finished' });
             throw err;
         }
@@ -272,6 +287,9 @@ export class DanTestAdapter implements TestAdapter {
     get testStates(): vscode.Event<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent> {
         return this.testStatesEmitter.event;
     }
-    retire?: vscode.Event<RetireEvent> | undefined;
+    get retire(): vscode.Event<RetireEvent> {
+        return this.retireEmitter.event;
+    }
+    // retire?: vscode.Event<RetireEvent> | undefined;
     autorun?: vscode.Event<void> | undefined;
 };

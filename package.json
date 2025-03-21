@@ -101,7 +101,7 @@
       "properties": {
         "dan.buildFolder": {
           "type": "string",
-          "default": "build",
+          "default": ".dan",
           "description": "Specify in which folder dan build configures and builds the project."
         },
         "dan.configureOptions": {

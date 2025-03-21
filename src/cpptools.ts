@@ -24,13 +24,19 @@ export class ConfigurationProvider implements cpt.CustomConfigurationProvider {
 
     constructor(private ext: Dan) {}
 
-    private getWorkspaceBrowseConfiguration() {
-        return codeCommand<cpt.WorkspaceBrowseConfiguration>(this.ext, 'get-workspace-browse-configuration');
+    private workspaceBrowseConfiguration: cpt.WorkspaceBrowseConfiguration | undefined = undefined;
+    private async getWorkspaceBrowseConfiguration() {
+        if (this.workspaceBrowseConfiguration === undefined) {
+            console.log("getWorkspaceBrowseConfiguration");
+            this.workspaceBrowseConfiguration = await codeCommand<cpt.WorkspaceBrowseConfiguration>(this.ext, 'get-workspace-browse-configuration');
+        }
+        return this.workspaceBrowseConfiguration;
     }
 
 
     resetCache() {
         this.configurationCache = [];
+        this.workspaceBrowseConfiguration = undefined;
     }
 
     private async updateCache(uris: vscode.Uri[]) {
@@ -47,6 +53,7 @@ export class ConfigurationProvider implements cpt.CustomConfigurationProvider {
                         configuration: item.configuration
                     };
                 }
+                console.log(`cpptools: caching ${item.uri}`);
                 this.configurationCache.push(item);
             } else {
                 configs[ii] = item;
@@ -103,6 +110,7 @@ export class ConfigurationProvider implements cpt.CustomConfigurationProvider {
      * @param uris The file URIs to look up
      */
     async provideConfigurations(uris: vscode.Uri[]): Promise<cpt.SourceFileConfigurationItem[]> {
+        console.debug(`cpptools.provideConfigurations: ${uris}`);
         return this.getCacheItems(uris);
     }
 

@@ -247,7 +247,7 @@ export async function channelExec(command: string,
     title = title ?? `Executing ${commandName} ${parameters.join(' ')}`;
     const channel = getOutputChannel();
     channel.clear();
-    channel.show();
+    // channel.show();
     channel.info('executing:', commandName);
     channel.trace('command args:', ...parameters);
     diagnostics?.clear();
@@ -266,7 +266,7 @@ export async function channelExec(command: string,
     if (rc !== 0) {
         channel.error(`command: ${commandName} failed`);
         vscode.window.showErrorMessage(`dan: ${commandName} ${statusStr}: see output log`);
-        channel.show();
+        // channel.show();
         throw Error(`command: ${commandName} failed`);
     } else {
         channel.info(`command: ${commandName} succeed`);
@@ -278,7 +278,7 @@ function getTerminal(): vscode.Terminal {
     if (!terminal) {
         terminal = vscode.window.createTerminal("dan");
     }
-    terminal.show();
+    // terminal.show();
     return terminal;
 }
 
@@ -289,7 +289,7 @@ export function termExec(command: string,
     cancellable: boolean = true,
     cwd: string | undefined = undefined) {
     let term = getTerminal();
-    term.show();
+    // term.show();
     let args = ['python', '-m', 'dan', command, ...parameters];
     if (cwd) {
         args.unshift('cd', cwd, '&&');
