@@ -265,8 +265,12 @@ export async function channelExec(command: string,
     logStream.dispose();
     if (rc !== 0) {
         channel.error(`command: ${commandName} failed`);
-        vscode.window.showErrorMessage(`dan: ${commandName} ${statusStr}: see output log`);
-        // channel.show();
+        const showLogsOutput = "see logs output";
+        vscode.window.showErrorMessage(`dan: ${commandName} ${statusStr}`, showLogsOutput).then((selection: string|undefined) => {
+            if (selection === showLogsOutput) {
+                channel.show();
+            }
+        });
         throw Error(`command: ${commandName} failed`);
     } else {
         channel.info(`command: ${commandName} succeed`);
